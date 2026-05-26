@@ -4,6 +4,8 @@ from pathlib import Path
 class Config:
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+    ZIP_SOURCE_DIR = PROJECT_ROOT / "AI_Project"
+    EXTRACT_DIR = PROJECT_ROOT / "data" / "raw_extracted"
     RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
     DATA_DIR = PROJECT_ROOT / "data" / "processed"
     TRAIN_DIR = DATA_DIR / "train"
@@ -22,14 +24,15 @@ class Config:
     TEST_RATIO = 0.1
 
     IMAGE_SIZE = 224
-    BATCH_SIZE = 32
+    BATCH_SIZE = 16
     NUM_WORKERS = 2
-    EPOCHS = 10
+    EPOCHS = 20
     SEED = 42
 
     MEAN = [0.485, 0.456, 0.406]
     STD = [0.229, 0.224, 0.225]
 
+    # Four experiment conditions for the final report.
     MODEL_NAMES = [
         "scratch_cnn",
         "efficientnet_scratch",

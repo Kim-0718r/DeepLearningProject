@@ -1,37 +1,32 @@
+from pathlib import Path
+import json
+
 import torch
-
-try:
-    from .config import Config
-except ImportError:
-    from config import Config
-
-
-def get_predictions(model, data_loader, device):
-    model.eval()
-
-    y_true = []
-    y_pred = []
-
-    with torch.no_grad():
-        for images, labels in data_loader:
-            images = images.to(device)
-            labels = labels.to(device)
-
-            outputs = model(images)
-            _, preds = torch.max(outputs, dim=1)
-
-            y_true.extend(labels.cpu().tolist())
-            y_pred.extend(preds.cpu().tolist())
-
-    return y_true, y_pred
+import numpy as np
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+)
 
 
-def evaluate_model(model, test_loader, criterion, device):
+def evaluate_model(model, test_loader, criterion, device, class_names=None):
+    """
+    학습된 모델을 test_loader로 평가하는 함수
+
+    반환값:
+    - test_loss
+    - test_acc
+    - classification_report
+    - confusion_matrix
+    - y_true
+    - y_pred
+    """
     model.eval()
 
     running_loss = 0.0
-    correct = 0
     total = 0
+
     y_true = []
     y_pred = []
 
@@ -42,51 +37,69 @@ def evaluate_model(model, test_loader, criterion, device):
 
             outputs = model(images)
             loss = criterion(outputs, labels)
-            _, preds = torch.max(outputs, dim=1)
 
             batch_size = labels.size(0)
             running_loss += loss.item() * batch_size
-            correct += (preds == labels).sum().item()
             total += batch_size
 
-            y_true.extend(labels.cpu().tolist())
-            y_pred.extend(preds.cpu().tolist())
+            _, preds = torch.max(outputs, dim=1)
 
-    return {
-        "test_loss": running_loss / total,
-        "test_acc": correct / total,
-        "y_true": y_true,
-        "y_pred": y_pred,
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(preds.cpu().numpy())
+
+    test_loss = running_loss / total
+    test_acc = accuracy_score(y_true, y_pred)
+
+    report = classification_report(
+        y_true,
+        y_pred,
+        target_names=class_names,
+        output_dict=True,
+        zero_division=0,
+    )
+
+    cm = confusion_matrix(y_true, y_pred)
+
+    results = {
+        "test_loss": test_loss,
+        "test_acc": test_acc,
+        "classification_report": report,
+        "confusion_matrix": cm,
+        "y_true": np.array(y_true),
+        "y_pred": np.array(y_pred),
     }
 
-
-def confusion_matrix(y_true, y_pred, num_classes=Config.NUM_CLASSES):
-    matrix = [[0 for _ in range(num_classes)] for _ in range(num_classes)]
-
-    for true_label, pred_label in zip(y_true, y_pred):
-        matrix[true_label][pred_label] += 1
-
-    return matrix
+    return results
 
 
-def classification_report(y_true, y_pred, class_names):
-    matrix = confusion_matrix(y_true, y_pred, num_classes=len(class_names))
-    report = {}
+def print_evaluation_summary(results):
+    """
+    평가 결과를 콘솔에 간단히 출력하는 함수
+    """
+    print("===== Evaluation Summary =====")
+    print(f"Test Loss     : {results['test_loss']:.4f}")
+    print(f"Test Accuracy : {results['test_acc']:.4f}")
+    print("==============================")
 
-    for class_idx, class_name in enumerate(class_names):
-        tp = matrix[class_idx][class_idx]
-        fp = sum(matrix[row][class_idx] for row in range(len(class_names))) - tp
-        fn = sum(matrix[class_idx][col] for col in range(len(class_names))) - tp
 
-        precision = tp / (tp + fp) if tp + fp > 0 else 0.0
-        recall = tp / (tp + fn) if tp + fn > 0 else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
+def save_metrics(results, save_path):
+    """
+    평가 결과를 JSON 파일로 저장하는 함수
 
-        report[class_name] = {
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-            "support": sum(matrix[class_idx]),
-        }
+    numpy array는 JSON 저장이 불가능하므로
+    confusion_matrix는 list로 변환하여 저장한다.
+    """
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    return report
+    json_results = {
+        "test_loss": round(float(results["test_loss"]), 4),
+        "test_acc": round(float(results["test_acc"]), 4),
+        "classification_report": results["classification_report"],
+        "confusion_matrix": results["confusion_matrix"].tolist(),
+    }
+
+    with open(save_path, "w", encoding="utf-8") as f:
+        json.dump(json_results, f, indent=4, ensure_ascii=False)
+
+    print(f"[Saved] Metrics saved to: {save_path}")

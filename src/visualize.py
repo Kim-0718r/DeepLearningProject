@@ -1,88 +1,138 @@
 from pathlib import Path
 
+import numpy as np
 import matplotlib.pyplot as plt
 
-try:
-    from .config import Config
-except ImportError:
-    from config import Config
 
-
-def _prepare_save_path(save_path):
+def plot_loss_curve(history, save_path):
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    return save_path
 
-
-def plot_history(history, save_path):
-    save_path = _prepare_save_path(save_path)
     epochs = range(1, len(history["train_loss"]) + 1)
 
-    plt.figure(figsize=(10, 4))
+    plt.figure(figsize=(8, 5))
+    plt.plot(epochs, history["train_loss"], marker="o", label="Train Loss")
+    plt.plot(epochs, history["val_loss"], marker="o", label="Validation Loss")
 
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, history["train_loss"], label="train")
-    plt.plot(epochs, history["val_loss"], label="val")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
+    plt.title("Loss Curve")
     plt.legend()
-    plt.title("Loss")
+    plt.grid(True)
+    plt.tight_layout()
 
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, history["train_acc"], label="train")
-    plt.plot(epochs, history["val_acc"], label="val")
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+    print(f"[Saved] Loss curve saved to: {save_path}")
+
+
+def plot_accuracy_curve(history, save_path):
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    epochs = range(1, len(history["train_acc"]) + 1)
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(epochs, history["train_acc"], marker="o", label="Train Accuracy")
+    plt.plot(epochs, history["val_acc"], marker="o", label="Validation Accuracy")
+
     plt.xlabel("Epoch")
     plt.ylabel("Accuracy")
+    plt.title("Accuracy Curve")
     plt.legend()
-    plt.title("Accuracy")
-
+    plt.grid(True)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=200)
+
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
+    print(f"[Saved] Accuracy curve saved to: {save_path}")
 
-def plot_confusion_matrix(matrix, class_names, save_path):
-    save_path = _prepare_save_path(save_path)
 
-    plt.figure(figsize=(9, 8))
-    plt.imshow(matrix, cmap="Blues")
+def plot_confusion_matrix(cm, class_names, save_path, normalize=False):
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cm = np.array(cm)
+
+    if normalize:
+        cm = cm.astype("float") / cm.sum(axis=1, keepdims=True)
+        cm = np.nan_to_num(cm)
+        fmt = ".2f"
+        title = "Normalized Confusion Matrix"
+    else:
+        fmt = "d"
+        title = "Confusion Matrix"
+
+    plt.figure(figsize=(10, 8))
+    plt.imshow(cm, interpolation="nearest")
+    plt.title(title)
     plt.colorbar()
 
-    plt.xticks(range(len(class_names)), class_names, rotation=45, ha="right")
-    plt.yticks(range(len(class_names)), class_names)
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.title("Confusion Matrix")
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45, ha="right")
+    plt.yticks(tick_marks, class_names)
 
-    for row_idx, row in enumerate(matrix):
-        for col_idx, value in enumerate(row):
-            plt.text(col_idx, row_idx, str(value), ha="center", va="center", fontsize=8)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            value = format(cm[i, j], fmt)
+            plt.text(
+                j,
+                i,
+                value,
+                ha="center",
+                va="center",
+                fontsize=8,
+            )
 
+    plt.ylabel("True Label")
+    plt.xlabel("Predicted Label")
     plt.tight_layout()
-    plt.savefig(save_path, dpi=200)
+
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
+    print(f"[Saved] Confusion matrix saved to: {save_path}")
 
-def plot_model_comparison(results, save_path, metric_name="test_acc"):
-    save_path = _prepare_save_path(save_path)
 
-    model_names = list(results.keys())
-    metric_values = [results[model_name][metric_name] for model_name in model_names]
+def plot_model_comparison(model_names, metric_values, metric_name, save_path):
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(8, 5))
     plt.bar(model_names, metric_values)
-    plt.ylim(0, 1)
+
+    plt.title(f"Model Comparison - {metric_name}")
+    plt.xlabel("Model")
     plt.ylabel(metric_name)
-    plt.xticks(rotation=20, ha="right")
-    plt.title("Model Comparison")
+
+    for i, value in enumerate(metric_values):
+        plt.text(
+            i,
+            value,
+            f"{value:.4f}",
+            ha="center",
+            va="bottom",
+        )
+
     plt.tight_layout()
-    plt.savefig(save_path, dpi=200)
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
-
-def history_path(model_name, cfg=Config):
-    return cfg.FIGURE_DIR / f"{model_name}_history.png"
+    print(f"[Saved] Model comparison chart saved to: {save_path}")
 
 
-def confusion_matrix_path(model_name, cfg=Config):
-    return cfg.FIGURE_DIR / f"{model_name}_confusion_matrix.png"
+def plot_all_training_curves(history, model_name, save_dir):
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    plot_loss_curve(
+        history=history,
+        save_path=save_dir / f"{model_name}_loss_curve.png",
+    )
+
+    plot_accuracy_curve(
+        history=history,
+        save_path=save_dir / f"{model_name}_accuracy_curve.png",
+    )

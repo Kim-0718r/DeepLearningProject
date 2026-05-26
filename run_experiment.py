@@ -1,18 +1,16 @@
 import torch
 import torch.nn as nn
 
-from src.analysis import summarize_confusion_pairs
+from src.analysis import get_top_misclassifications
 from src.config import Config, get_checkpoint_path
-from src.dataset import get_dataloaders
-from src.evaluate import classification_report, confusion_matrix, evaluate_model
+from src.data_preprocessing import get_dataloaders
+from src.evaluate import evaluate_model
 from src.models import get_model
 from src.train import build_optimizer, train_model
 from src.utils import get_device, prepare_output_dirs, save_json, set_seed
 from src.visualize import (
-    confusion_matrix_path,
-    history_path,
     plot_confusion_matrix,
-    plot_history,
+    plot_all_training_curves,
     plot_model_comparison,
 )
 
@@ -49,37 +47,54 @@ def run_all_experiments(cfg=Config):
             test_loader=test_loader,
             criterion=criterion,
             device=device,
+            class_names=class_names,
         )
-        matrix = confusion_matrix(
-            result["y_true"],
-            result["y_pred"],
-            num_classes=cfg.NUM_CLASSES,
-        )
+        matrix = result["confusion_matrix"]
 
         all_results[model_name] = {
-            "test_loss": result["test_loss"],
-            "test_acc": result["test_acc"],
+            "test_loss": float(result["test_loss"]),
+            "test_acc": float(result["test_acc"]),
         }
 
-        plot_history(history, history_path(model_name, cfg))
-        plot_confusion_matrix(matrix, class_names, confusion_matrix_path(model_name, cfg))
+        plot_all_training_curves(history, model_name, cfg.FIGURE_DIR)
+        plot_confusion_matrix(
+            matrix,
+            class_names,
+            cfg.FIGURE_DIR / f"{model_name}_confusion_matrix.png",
+        )
 
         save_json(history, cfg.METRIC_DIR / f"{model_name}_history.json")
         save_json(
-            classification_report(result["y_true"], result["y_pred"], class_names),
+            result["classification_report"],
             cfg.METRIC_DIR / f"{model_name}_classification_report.json",
         )
         save_json(
-            summarize_confusion_pairs(result["y_true"], result["y_pred"], class_names),
+            get_top_misclassifications(matrix, class_names),
             cfg.METRIC_DIR / f"{model_name}_confusion_pairs.json",
         )
 
-    plot_model_comparison(all_results, cfg.FIGURE_DIR / "model_comparison.png")
+    model_names = list(all_results.keys())
+    test_acc_values = [all_results[name]["test_acc"] for name in model_names]
+    test_loss_values = [all_results[name]["test_loss"] for name in model_names]
+
+    plot_model_comparison(
+        model_names,
+        test_acc_values,
+        "Test Accuracy",
+        cfg.FIGURE_DIR / "model_comparison_accuracy.png",
+    )
+    plot_model_comparison(
+        model_names,
+        test_loss_values,
+        "Test Loss",
+        cfg.FIGURE_DIR / "model_comparison_loss.png",
+    )
     save_json(all_results, cfg.METRIC_DIR / "model_comparison.json")
 
     return all_results
 
 
 if __name__ == "__main__":
-    torch.set_float32_matmul_precision("high")
+    if hasattr(torch, "set_float32_matmul_precision"):
+        torch.set_float32_matmul_precision("high")
     run_all_experiments()
